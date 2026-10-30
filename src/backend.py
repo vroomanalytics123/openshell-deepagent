@@ -22,6 +22,8 @@ import shlex
 from typing import Any
 
 from deepagents.backends import CompositeBackend, FilesystemBackend
+
+from src.guard import refusal_reason
 from deepagents.backends.protocol import (
     ExecuteResponse,
     FileDownloadResponse,
@@ -61,7 +63,20 @@ class OpenShellBackend(BaseSandbox):
         *,
         timeout: int | None = None,
     ) -> ExecuteResponse:
-        """Run a shell command in the OpenShell sandbox."""
+        """Run a shell command in the OpenShell sandbox.
+
+        A narrow command-layer guard (src/guard.py) refuses recursive,
+        forced deletes outside the writable directories declared in
+        policy.yaml before anything reaches the sandbox. The sandbox
+        policy remains the real enforcement boundary.
+        """
+        reason = refusal_reason(command)
+        if reason is not None:
+            return ExecuteResponse(
+                output=f"Command refused by command-layer guard: {reason}",
+                exit_code=1,
+                truncated=False,
+            )
         effective_timeout = timeout if timeout is not None else self._default_timeout
         result = self._session.exec(
             ["bash", "-c", command],
